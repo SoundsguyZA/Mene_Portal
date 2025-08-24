@@ -3,12 +3,16 @@ const fs = require('fs');
 const path = require('path');
 const url = require('url');
 const MeneLTMBridge = require('./mene_ltm_bridge');
+const AgentCommunicationSystem = require('./agent_communication');
 const { spawn } = require('child_process');
 
 const PORT = 3000;
 
 // Initialize Mene LTM Bridge
 const ltmBridge = new MeneLTMBridge();
+
+// Initialize Agent Communication System
+const agentComm = new AgentCommunicationSystem(ltmBridge);
 
 // Browser automation and RAG integration
 let pythonProcess = null;
@@ -286,6 +290,78 @@ async function handleApiRequest(req, res, pathname) {
     
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(mockMemory));
+  } else if (pathname === './api/agent/communicate' && req.method === 'POST') {
+    // Handle agent-to-agent communication
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        const { fromAgent, toAgent, message, context } = data;
+        
+        const result = await agentComm.routeAgentMessage(fromAgent, toAgent, message, context);
+        
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(result));
+      } catch (error) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Invalid agent communication request' }));
+      }
+    });
+  } else if (pathname === './api/agent/discussion' && req.method === 'POST') {
+    // Handle multi-agent discussion
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        const { topic, participants, moderator } = data;
+        
+        const result = await agentComm.orchestrateMultiAgentDiscussion(topic, participants, moderator);
+        
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(result));
+      } catch (error) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Invalid discussion request' }));
+      }
+    });
+  } else if (pathname === './api/agent/history' && req.method === 'GET') {
+    // Get agent communication history
+    const urlParams = new URLSearchParams(parsedUrl.query);
+    const agent1 = urlParams.get('agent1');
+    const agent2 = urlParams.get('agent2');
+    const limit = parseInt(urlParams.get('limit')) || 10;
+    
+    agentComm.getAgentCommunicationHistory(agent1, agent2, limit).then(result => {
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify(result));
+    }).catch(error => {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: error.message }));
+    });
+  } else if (pathname === './api/agent/stats' && req.method === 'GET') {
+    // Get agent communication statistics
+    const stats = {
+      status: 'ok',
+      totalCommunications: agentComm.communicationHistory.length,
+      activeConversations: agentComm.activeConversations.size,
+      agentActivity: {
+        mene: agentComm.communicationHistory.filter(c => c.fromAgent === 'mene' || c.toAgent === 'mene').length,
+        bonny: agentComm.communicationHistory.filter(c => c.fromAgent === 'bonny' || c.toAgent === 'bonny').length,
+        steve: agentComm.communicationHistory.filter(c => c.fromAgent === 'steve' || c.toAgent === 'steve').length,
+        veritas: agentComm.communicationHistory.filter(c => c.fromAgent === 'veritas' || c.toAgent === 'veritas').length,
+        chimalitis: agentComm.communicationHistory.filter(c => c.fromAgent === 'chimalitis' || c.toAgent === 'chimalitis').length
+      },
+      timestamp: new Date().toISOString()
+    };
+    
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(stats));
   } else {
     res.statusCode = 404;
     res.end(JSON.stringify({ error: 'API endpoint not found' }));
@@ -299,6 +375,8 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🧠 Mene_LTM system integrated with voice assets`);
   console.log(`🌐 Browser automation ready for ChatGPT/Genspark`);
   console.log(`📚 RAG memory system ready for document processing`);
+  console.log(`📨 Agent-to-agent communication system active`);
+  console.log(`🎭 Multi-agent discussions enabled`);
   
   // Initialize additional systems
   initializePythonRAG();
