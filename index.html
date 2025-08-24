@@ -1,69 +1,866 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>MenaPortal</title>
+    <title>MenePortal - Multi-Agent Chat Interface</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        body, html {
+        * {
             margin: 0;
             padding: 0;
-            font-family: sans-serif;
+            box-sizing: border-box;
+        }
+
+        body, html {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             height: 100%;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #ffffff;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 0;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            overflow-y: auto;
+        }
+
+        .main-chat {
+            flex: 1;
             display: flex;
             flex-direction: column;
+            background: rgba(0, 0, 0, 0.2);
         }
-        #chats, #agents {
+
+        .header {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 300;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.8;
+            font-size: 14px;
+        }
+
+        .agents-list {
+            margin-bottom: 30px;
+        }
+
+        .agents-list h3 {
+            margin-bottom: 15px;
+            color: #4fc3f7;
+            font-size: 18px;
+        }
+
+        .agent-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            margin-bottom: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .agent-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateX(5px);
+        }
+
+        .agent-item.active {
+            background: rgba(76, 175, 80, 0.3);
+            border-left: 3px solid #4caf50;
+        }
+
+        .agent-icon {
+            font-size: 24px;
+            margin-right: 12px;
+            width: 35px;
+            text-align: center;
+        }
+
+        .agent-info h4 {
+            font-size: 14px;
+            margin-bottom: 2px;
+        }
+
+        .agent-info p {
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
+        .agent-status {
+            margin-left: auto;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #f44336;
+        }
+
+        .agent-status.online {
+            background: #4caf50;
+        }
+
+        .chat-area {
             flex: 1;
-            overflow: auto;
-            padding: 10px;
+            padding: 20px;
+            overflow-y: auto;
+            background-image: 
+                radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(120, 219, 255, 0.3) 0%, transparent 50%);
         }
-        #chats {
-            background: #111;
-            color: #eee;
-            border-bottom: 2px solid #444;
+
+        .message {
+            display: flex;
+            margin-bottom: 20px;
+            animation: slideIn 0.3s ease-out;
         }
-        #agents {
-            background: #222;
-            color: #ccc;
+
+        .message.user {
+            justify-content: flex-end;
         }
-        textarea {
+
+        .message-content {
+            max-width: 70%;
+            padding: 15px 20px;
+            border-radius: 20px;
+            position: relative;
+            word-wrap: break-word;
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-bottom-right-radius: 5px;
+        }
+
+        .message.agent .message-content {
+            background: rgba(255, 255, 255, 0.15);
+            border-bottom-left-radius: 5px;
+            border-left: 3px solid #4fc3f7;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .message-time {
+            margin-left: auto;
+            font-size: 11px;
+        }
+
+        .message-text {
+            line-height: 1.5;
+        }
+
+        .input-area {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .input-container {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+
+        #chatInput {
             width: 100%;
-            height: 60px;
+            min-height: 50px;
+            max-height: 150px;
+            padding: 15px 50px 15px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 25px;
+            color: #ffffff;
+            font-size: 14px;
+            resize: none;
+            outline: none;
+            font-family: inherit;
         }
-        button {
-            padding: 8px 12px;
-            margin-top: 6px;
-            background: #333;
-            color: white;
+
+        #chatInput::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        #chatInput:focus {
+            border-color: #4fc3f7;
+            box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.2);
+        }
+
+        .voice-btn {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
             border: none;
+            color: #4fc3f7;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .voice-btn:hover {
+            color: #ffffff;
+            transform: translateY(-50%) scale(1.1);
+        }
+
+        .voice-btn.recording {
+            color: #f44336;
+            animation: pulse 1s infinite;
+        }
+
+        .send-btn {
+            background: linear-gradient(135deg, #4fc3f7 0%, #29b6f6 100%);
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .send-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(79, 195, 247, 0.4);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .config-panel {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .config-btn {
+            width: 100%;
+            padding: 12px;
+            background: rgba(255, 193, 7, 0.2);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            border-radius: 8px;
+            color: #ffc107;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .config-btn:hover {
+            background: rgba(255, 193, 7, 0.3);
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            opacity: 0.7;
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: #4fc3f7;
+            border-radius: 50%;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .error-message {
+            background: rgba(244, 67, 54, 0.2);
+            border: 1px solid rgba(244, 67, 54, 0.3);
+            color: #f44336;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                max-height: 200px;
+            }
+            
+            .main-chat {
+                flex: 1;
+            }
+            
+            .message-content {
+                max-width: 85%;
+            }
         }
     </style>
 </head>
 <body>
-    <div id="chats">
-        <h2>Chats</h2>
-        <div id="chatOutput"></div>
-        <textarea id="chatInput" placeholder="Type here..."></textarea>
-        <button onclick="sendToAgents()">Send to Agents</button>
-    </div>
-    <div id="agents">
-        <h2>Agents</h2>
-        <div id="agentOutput"></div>
+    <div class="container">
+        <div class="sidebar">
+            <div class="agents-list">
+                <h3><i class="fas fa-robot"></i> Active Agents</h3>
+                <div id="agentsList"></div>
+            </div>
+            
+            <div class="config-panel">
+                <button class="config-btn" onclick="toggleConfigPanel()">
+                    <i class="fas fa-cog"></i> Configuration
+                </button>
+            </div>
+        </div>
+
+        <div class="main-chat">
+            <div class="header">
+                <h1>MenePortal</h1>
+                <p>Multi-Agent Conversational Interface</p>
+            </div>
+
+            <div class="chat-area" id="chatArea">
+                <div class="message agent">
+                    <div class="message-content">
+                        <div class="message-header">
+                            <span><i class="fas fa-robot"></i> System</span>
+                            <span class="message-time" id="welcomeTime"></span>
+                        </div>
+                        <div class="message-text">
+                            Welcome to MenePortal! Select agents from the sidebar and start chatting. Your messages will be sent to all active agents simultaneously.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <div class="input-container">
+                    <div class="input-wrapper">
+                        <textarea 
+                            id="chatInput" 
+                            placeholder="Type your message here..." 
+                            rows="1"
+                            onkeypress="handleKeyPress(event)"
+                        ></textarea>
+                        <button class="voice-btn" onclick="toggleVoiceRecording()" title="Voice input">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                    </div>
+                    <button class="send-btn" onclick="sendMessage()" title="Send message">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <script src="./js/api-handler.js"></script>
     <script>
-        function sendToAgents() {
-            const input = document.getElementById("chatInput").value;
-            const chatBox = document.getElementById("chatOutput");
-            const agentBox = document.getElementById("agentOutput");
+        // Global variables
+        let agents = [];
+        let activeAgents = new Set();
+        let isRecording = false;
+        let recognition = null;
+        let apiHandler = null;
+        let speechHandler = null;
+        let useRealAPIs = false; // Toggle for real API calls vs simulation
 
-            const userMsg = `<p><strong>You:</strong> ${input}</p>`;
-            chatBox.innerHTML += userMsg;
-            agentBox.innerHTML += `<p><em>Agent received:</em> ${input}</p>`;
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeApplication();
+        });
 
-            document.getElementById("chatInput").value = "";
+        async function initializeApplication() {
+            try {
+                apiHandler = new APIHandler();
+                await loadConfiguration();
+                initializeSpeechRecognition();
+                setWelcomeTime();
+                setupTextareaAutoResize();
+                checkAPIConfiguration();
+            } catch (error) {
+                console.error('Application initialization failed:', error);
+                showError('Failed to initialize application: ' + error.message);
+            }
+        }
+
+        // Load agent configuration
+        async function loadConfiguration() {
+            try {
+                const config = await apiHandler.loadConfig();
+                agents = config.agents || [];
+                speechHandler = new SpeechToTextHandler(config);
+                renderAgentsList();
+            } catch (error) {
+                console.error('Failed to load configuration:', error);
+                showError('Failed to load agent configuration. Please check meneportal_config.json file.');
+            }
+        }
+
+        // Check API configuration status
+        function checkAPIConfiguration() {
+            let hasConfiguredAPIs = false;
+            agents.forEach(agent => {
+                const status = apiHandler.getAgentStatus(agent);
+                if (status.status === 'configured') {
+                    hasConfiguredAPIs = true;
+                }
+                updateAgentStatus(agent.name, status);
+            });
+            
+            if (hasConfiguredAPIs) {
+                useRealAPIs = true;
+                console.log('Real APIs detected - enabling live mode');
+            } else {
+                console.log('No configured APIs - using simulation mode');
+            }
+        }
+
+        // Update agent visual status
+        function updateAgentStatus(agentName, status) {
+            const statusElement = document.getElementById(`status-${agentName}`);
+            const agentElement = document.querySelector(`[onclick="toggleAgent('${agentName}')"] .agent-info p`);
+            
+            if (statusElement && agentElement) {
+                statusElement.classList.remove('online');
+                
+                switch (status.status) {
+                    case 'configured':
+                        statusElement.style.background = '#4caf50'; // Green
+                        agentElement.textContent = 'Ready';
+                        break;
+                    case 'unconfigured':
+                        statusElement.style.background = '#ff9800'; // Orange
+                        agentElement.textContent = 'API key needed';
+                        break;
+                    case 'local':
+                        statusElement.style.background = '#2196f3'; // Blue
+                        agentElement.textContent = 'Local service';
+                        break;
+                    default:
+                        statusElement.style.background = '#f44336'; // Red
+                        agentElement.textContent = 'Offline';
+                }
+            }
+        }
+
+        // Render agents list in sidebar
+        function renderAgentsList() {
+            const agentsList = document.getElementById('agentsList');
+            agentsList.innerHTML = '';
+
+            agents.forEach(agent => {
+                const agentElement = document.createElement('div');
+                agentElement.className = 'agent-item';
+                agentElement.onclick = () => toggleAgent(agent.name);
+                
+                agentElement.innerHTML = `
+                    <div class="agent-icon">${agent.icon || '🤖'}</div>
+                    <div class="agent-info">
+                        <h4>${agent.name}</h4>
+                        <p>${getAgentStatus(agent)}</p>
+                    </div>
+                    <div class="agent-status" id="status-${agent.name}"></div>
+                `;
+                
+                agentsList.appendChild(agentElement);
+            });
+        }
+
+        // Get agent status description
+        function getAgentStatus(agent) {
+            if (agent.endpoint.includes('localhost')) {
+                return 'Local Service';
+            } else if (agent.endpoint.includes('openai.com')) {
+                return 'OpenAI GPT-4o';
+            } else if (agent.endpoint.includes('kindroid.io')) {
+                return 'Kindroid AI';
+            } else if (agent.endpoint.includes('groq.com')) {
+                return 'Groq LLaMA';
+            } else {
+                return 'External API';
+            }
+        }
+
+        // Toggle agent activation
+        function toggleAgent(agentName) {
+            const agentElement = document.querySelector(`[onclick="toggleAgent('${agentName}')"]`);
+            const statusElement = document.getElementById(`status-${agentName}`);
+            
+            if (activeAgents.has(agentName)) {
+                activeAgents.delete(agentName);
+                agentElement.classList.remove('active');
+                statusElement.classList.remove('online');
+            } else {
+                activeAgents.add(agentName);
+                agentElement.classList.add('active');
+                statusElement.classList.add('online');
+            }
+        }
+
+        // Handle keyboard input
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        // Setup textarea auto-resize
+        function setupTextareaAutoResize() {
+            const textarea = document.getElementById('chatInput');
+            textarea.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+            });
+        }
+
+        // Send message to active agents
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            if (activeAgents.size === 0) {
+                showError('Please select at least one agent to chat with.');
+                return;
+            }
+
+            // Clear input and add user message
+            input.value = '';
+            input.style.height = 'auto';
+            addMessage('user', 'You', message);
+
+            // Show typing indicators for active agents
+            const typingIndicators = [];
+            activeAgents.forEach(agentName => {
+                const indicatorId = addTypingIndicator(agentName);
+                typingIndicators.push(indicatorId);
+            });
+
+            // Send to all active agents
+            const promises = Array.from(activeAgents).map(agentName => 
+                sendToAgent(agentName, message)
+            );
+
+            try {
+                const responses = await Promise.allSettled(promises);
+                
+                // Remove typing indicators
+                typingIndicators.forEach(id => removeTypingIndicator(id));
+                
+                // Process responses
+                responses.forEach((result, index) => {
+                    const agentName = Array.from(activeAgents)[index];
+                    if (result.status === 'fulfilled') {
+                        addMessage('agent', agentName, result.value);
+                    } else {
+                        addMessage('agent', agentName, `Error: ${result.reason}`, true);
+                    }
+                });
+                
+            } catch (error) {
+                typingIndicators.forEach(id => removeTypingIndicator(id));
+                showError(`Failed to send message: ${error.message}`);
+            }
+        }
+
+        // Send message to specific agent
+        async function sendToAgent(agentName, message) {
+            const agent = agents.find(a => a.name === agentName);
+            if (!agent) throw new Error(`Agent ${agentName} not found`);
+
+            if (useRealAPIs && apiHandler.getAgentStatus(agent).status === 'configured') {
+                try {
+                    return await apiHandler.sendMessage(agentName, message);
+                } catch (error) {
+                    console.warn(`Real API failed for ${agentName}, falling back to simulation:`, error);
+                    return simulateAgentResponse(agent, message);
+                }
+            } else {
+                return simulateAgentResponse(agent, message);
+            }
+        }
+
+        // Simulate agent responses (replace with real API calls when keys are configured)
+        function simulateAgentResponse(agent, message) {
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    const responses = [
+                        `I understand you said: "${message}". How can I help you further?`,
+                        `That's an interesting point about "${message}". Let me think about that...`,
+                        `Based on your message "${message}", I would suggest considering multiple perspectives.`,
+                        `Thank you for sharing "${message}". This reminds me of similar topics we could explore.`,
+                        `Your message about "${message}" raises some fascinating questions. What would you like to know more about?`
+                    ];
+                    
+                    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                    resolve(`[${agent.name}] ${randomResponse}`);
+                }, 1000 + Math.random() * 2000); // Random delay 1-3 seconds
+            });
+        }
+
+        // Add message to chat
+        function addMessage(type, sender, text, isError = false) {
+            const chatArea = document.getElementById('chatArea');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            messageDiv.innerHTML = `
+                <div class="message-content ${isError ? 'error-message' : ''}">
+                    <div class="message-header">
+                        <span><i class="fas ${type === 'user' ? 'fa-user' : 'fa-robot'}"></i> ${sender}</span>
+                        <span class="message-time">${currentTime}</span>
+                    </div>
+                    <div class="message-text">${text}</div>
+                </div>
+            `;
+            
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        // Add typing indicator
+        function addTypingIndicator(agentName) {
+            const chatArea = document.getElementById('chatArea');
+            const indicatorDiv = document.createElement('div');
+            const indicatorId = `typing-${agentName}-${Date.now()}`;
+            indicatorDiv.id = indicatorId;
+            indicatorDiv.className = 'message agent';
+            
+            indicatorDiv.innerHTML = `
+                <div class="message-content">
+                    <div class="message-header">
+                        <span><i class="fas fa-robot"></i> ${agentName}</span>
+                    </div>
+                    <div class="loading">
+                        <span>Typing</span>
+                        <div class="typing-indicator">
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            chatArea.appendChild(indicatorDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+            return indicatorId;
+        }
+
+        // Remove typing indicator
+        function removeTypingIndicator(indicatorId) {
+            const indicator = document.getElementById(indicatorId);
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+
+        // Initialize speech recognition
+        function initializeSpeechRecognition() {
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = 'en-US';
+
+                recognition.onresult = function(event) {
+                    const transcript = event.results[0][0].transcript;
+                    document.getElementById('chatInput').value = transcript;
+                    stopVoiceRecording();
+                };
+
+                recognition.onerror = function(event) {
+                    console.error('Speech recognition error:', event.error);
+                    stopVoiceRecording();
+                    showError('Speech recognition failed. Please try again.');
+                };
+
+                recognition.onend = function() {
+                    stopVoiceRecording();
+                };
+            }
+        }
+
+        // Toggle voice recording
+        function toggleVoiceRecording() {
+            if (!recognition) {
+                showError('Speech recognition is not supported in your browser.');
+                return;
+            }
+
+            if (isRecording) {
+                stopVoiceRecording();
+            } else {
+                startVoiceRecording();
+            }
+        }
+
+        // Start voice recording
+        function startVoiceRecording() {
+            isRecording = true;
+            const voiceBtn = document.querySelector('.voice-btn');
+            voiceBtn.classList.add('recording');
+            voiceBtn.innerHTML = '<i class="fas fa-stop"></i>';
+            recognition.start();
+        }
+
+        // Stop voice recording
+        function stopVoiceRecording() {
+            isRecording = false;
+            const voiceBtn = document.querySelector('.voice-btn');
+            voiceBtn.classList.remove('recording');
+            voiceBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+            if (recognition) {
+                recognition.stop();
+            }
+        }
+
+        // Show error message
+        function showError(message) {
+            const chatArea = document.getElementById('chatArea');
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${message}`;
+            chatArea.appendChild(errorDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+            
+            // Auto-remove error after 5 seconds
+            setTimeout(() => {
+                errorDiv.remove();
+            }, 5000);
+        }
+
+        // Set welcome message time
+        function setWelcomeTime() {
+            const welcomeTime = document.getElementById('welcomeTime');
+            welcomeTime.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // Configuration panel
+        function toggleConfigPanel() {
+            const configInfo = `
+MenePortal Configuration Status:
+
+Configured Agents:
+${agents.map(agent => {
+                const status = apiHandler ? apiHandler.getAgentStatus(agent) : { status: 'unknown' };
+                return `• ${agent.name}: ${status.message || status.status}`;
+            }).join('\n')}
+
+To configure API keys:
+1. Edit meneportal_config.json
+2. Replace placeholders with your actual API keys
+3. Refresh the page
+
+Supported APIs:
+• OpenAI GPT-4o
+• Groq (LLaMA models)
+• Kindroid AI
+• ElevenLabs Speech-to-Text
+• Local services
+
+Mode: ${useRealAPIs ? 'Live API' : 'Simulation'}`;
+            
+            alert(configInfo);
+        }
+
+        // Test agent connection
+        async function testAgent(agentName) {
+            if (!apiHandler) return;
+            
+            const result = await apiHandler.testAgent(agentName);
+            const message = `${agentName} test: ${result.message}`;
+            
+            if (result.status === 'connected') {
+                addMessage('agent', agentName, `✅ Connection test successful!`);
+            } else {
+                addMessage('agent', agentName, `❌ Connection test failed: ${result.message}`, true);
+            }
         }
     </script>
 </body>

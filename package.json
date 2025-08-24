@@ -1,0 +1,37 @@
+{
+  "name": "meneportal",
+  "version": "1.0.0",
+  "description": "Multi-agent chat portal application with AI integrations",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop meneportal",
+    "pm2:restart": "pm2 restart meneportal",
+    "pm2:logs": "pm2 logs meneportal --nostream",
+    "pm2:status": "pm2 status"
+  },
+  "keywords": [
+    "ai",
+    "chat",
+    "multi-agent",
+    "openai",
+    "kindroid",
+    "groq",
+    "speech-to-text"
+  ],
+  "author": "MenePortal Development Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "pm2": "^6.0.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "."
+  },
+  "homepage": "http://."
+}
