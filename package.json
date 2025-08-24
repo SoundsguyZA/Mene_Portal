@@ -7,10 +7,17 @@
     "start": "node server.js",
     "dev": "node server.js",
     "pm2:start": "pm2 start ecosystem.config.js",
-    "pm2:stop": "pm2 stop meneportal",
-    "pm2:restart": "pm2 restart meneportal",
-    "pm2:logs": "pm2 logs meneportal --nostream",
-    "pm2:status": "pm2 status"
+    "pm2:stop": "pm2 stop mene-portal",
+    "pm2:restart": "pm2 restart mene-portal",
+    "pm2:logs": "pm2 logs mene-portal --nostream",
+    "pm2:status": "pm2 status",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "deploy": "npm run docker:build && npm run docker:up",
+    "install:python": "pip install -r requirements.python.txt",
+    "setup": "npm install && npm run install:python"
   },
   "keywords": [
     "ai",
