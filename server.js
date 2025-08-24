@@ -2,8 +2,12 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const MeneLTMBridge = require('./mene_ltm_bridge');
 
 const PORT = 3000;
+
+// Initialize Mene LTM Bridge
+const ltmBridge = new MeneLTMBridge();
 
 // MIME types
 const mimeTypes = {
@@ -67,7 +71,7 @@ const server = http.createServer((req, res) => {
 });
 
 // Handle API requests for the Mene Portal
-function handleApiRequest(req, res, pathname) {
+async function handleApiRequest(req, res, pathname) {
   if (pathname === './api/chat' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => {
@@ -78,31 +82,86 @@ function handleApiRequest(req, res, pathname) {
         const data = JSON.parse(body);
         console.log('Chat request:', data);
         
-        // Mock response for now - you'll integrate real agents here
-        const mockResponse = {
-          agent: data.agent || 'Mene',
-          message: `Hello! This is ${data.agent || 'Mene'} responding to: "${data.message}". The portal is now running! 🚀`,
-          timestamp: new Date().toISOString()
-        };
+        // Process through Mene LTM system
+        ltmBridge.processAgentQuery(
+          data.agent || 'Mene', 
+          data.message, 
+          { 
+            previousMessages: data.context || [],
+            knowledgeContext: data.knowledgeQuery || null
+          }
+        ).then(ltmResponse => {
+          const response = {
+            agent: ltmResponse.agent,
+            message: ltmResponse.response,
+            timestamp: ltmResponse.timestamp,
+            model: ltmResponse.model,
+            specialties: ltmResponse.specialties,
+            voice: ltmResponse.voice,
+            confidence: ltmResponse.confidence
+          };
+          
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(response));
+        }).catch(error => {
+          console.error('LTM Error:', error);
+          const fallbackResponse = {
+            agent: data.agent || 'Mene',
+            message: `Hello! I'm ${data.agent || 'Mene'} responding to: "${data.message}". The LTM system is initializing...`,
+            timestamp: new Date().toISOString(),
+            error: 'LTM processing error'
+          };
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(fallbackResponse));
+        });
         
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify(mockResponse));
+        // Response handled in promise chain above
       } catch (error) {
         res.statusCode = 400;
         res.end(JSON.stringify({ error: 'Invalid JSON' }));
       }
     });
   } else if (pathname === './api/agents' && req.method === 'GET') {
-    // Serve the agent configuration
-    fs.readFile('./meneportal_config.json', (err, data) => {
-      if (err) {
-        res.statusCode = 500;
-        res.end(JSON.stringify({ error: 'Failed to load agents config' }));
-        return;
-      }
+    // Serve enhanced agent configuration with LTM data
+    try {
+      const configData = fs.readFileSync('./meneportal_config.json', 'utf8');
+      const config = JSON.parse(configData);
+      
+      // Enhance with LTM agent data
+      const ltmAgents = ltmBridge.getAllAgents();
+      const enhancedAgents = config.agents.map(agent => {
+        const ltmAgent = ltmAgents.find(ltm => 
+          ltm.name.toLowerCase().includes(agent.name.toLowerCase()) ||
+          agent.name.toLowerCase().includes(ltm.name)
+        );
+        
+        return {
+          ...agent,
+          ltm: ltmAgent ? {
+            role: ltmAgent.role,
+            personality: ltmAgent.personality,
+            specialties: ltmAgent.specialties,
+            voiceProfile: ltmAgent.voiceProfile
+          } : null
+        };
+      });
+      
+      const enhancedConfig = {
+        ...config,
+        agents: enhancedAgents,
+        ltm: {
+          available: true,
+          voiceAssets: ltmBridge.getVoiceAssets().length,
+          memoryAgents: ltmAgents.length
+        }
+      };
+      
       res.setHeader('Content-Type', 'application/json');
-      res.end(data);
-    });
+      res.end(JSON.stringify(enhancedConfig, null, 2));
+    } catch (error) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: 'Failed to load enhanced agents config' }));
+    }
   } else if (pathname === './api/speech-to-text' && req.method === 'POST') {
     // Handle speech-to-text requests
     res.setHeader('Content-Type', 'application/json');
@@ -110,6 +169,27 @@ function handleApiRequest(req, res, pathname) {
       text: "Speech recognition would be implemented here",
       confidence: 0.95 
     }));
+  } else if (pathname === './api/ltm/agents' && req.method === 'GET') {
+    // Get all LTM agents
+    const agents = ltmBridge.getAllAgents();
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(agents));
+  } else if (pathname === './api/ltm/voices' && req.method === 'GET') {
+    // Get voice assets
+    const voices = ltmBridge.getVoiceAssets();
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(voices));
+  } else if (pathname.startsWith('./api/ltm/agent/') && req.method === 'GET') {
+    // Get specific agent info
+    const agentName = pathname.split('/').pop();
+    const agentInfo = ltmBridge.getAgentInfo(agentName);
+    res.setHeader('Content-Type', 'application/json');
+    if (agentInfo) {
+      res.end(JSON.stringify(agentInfo));
+    } else {
+      res.statusCode = 404;
+      res.end(JSON.stringify({ error: 'Agent not found' }));
+    }
   } else {
     res.statusCode = 404;
     res.end(JSON.stringify({ error: 'API endpoint not found' }));
