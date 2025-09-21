@@ -4,6 +4,7 @@ const path = require('path');
 const url = require('url');
 const MeneLTMBridge = require('./mene_ltm_bridge');
 const AgentCommunicationSystem = require('./agent_communication');
+const VeritasSyncMemory = require('./veritas_sync_memory');
 const { spawn } = require('child_process');
 
 const PORT = 3000;
@@ -13,6 +14,9 @@ const ltmBridge = new MeneLTMBridge();
 
 // Initialize Agent Communication System
 const agentComm = new AgentCommunicationSystem(ltmBridge);
+
+// Initialize Veritas Sync Memory System
+const veritasSync = new VeritasSyncMemory(ltmBridge, null);
 
 // Browser automation and RAG integration
 let pythonProcess = null;
@@ -362,6 +366,103 @@ async function handleApiRequest(req, res, pathname) {
     
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(stats));
+  } else if (pathname === './api/veritas/verify' && req.method === 'POST') {
+    // Verify a claim through Veritas Sync Memory
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        const { claim, context } = data;
+        
+        const verification = await veritasSync.verifyClaim(claim, context);
+        
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(verification));
+      } catch (error) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Invalid verification request' }));
+      }
+    });
+  } else if (pathname === './api/veritas/sync' && req.method === 'POST') {
+    // Sync memory across platforms
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        const { memoryData, platforms } = data;
+        
+        const syncResults = await veritasSync.syncMemoryAcrossPlatforms(memoryData, platforms);
+        
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+          status: 'ok',
+          sync_results: syncResults,
+          timestamp: new Date().toISOString()
+        }));
+      } catch (error) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Invalid sync request' }));
+      }
+    });
+  } else if (pathname === './api/veritas/stats' && req.method === 'GET') {
+    // Get Veritas verification statistics
+    try {
+      const stats = veritasSync.getVerificationStats();
+      
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({
+        status: 'ok',
+        veritas_stats: stats,
+        timestamp: new Date().toISOString()
+      }));
+    } catch (error) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: error.message }));
+    }
+  } else if (pathname === './api/veritas/search' && req.method === 'GET') {
+    // Search truth database
+    const urlParams = new URLSearchParams(parsedUrl.query);
+    const query = urlParams.get('query');
+    const limit = parseInt(urlParams.get('limit')) || 10;
+    
+    try {
+      // Search through truth database
+      const results = [];
+      let count = 0;
+      
+      for (const [id, verification] of veritasSync.truthDatabase) {
+        if (count >= limit) break;
+        
+        if (verification.claim.toLowerCase().includes(query.toLowerCase())) {
+          results.push({
+            id: id,
+            claim: verification.claim.substring(0, 200),
+            status: verification.status,
+            confidence: verification.confidence,
+            sources: verification.sources?.length || 0,
+            timestamp: verification.completedAt || verification.startedAt
+          });
+          count++;
+        }
+      }
+      
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({
+        status: 'ok',
+        query: query,
+        results: results,
+        total_found: results.length
+      }));
+    } catch (error) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: error.message }));
+    }
   } else {
     res.statusCode = 404;
     res.end(JSON.stringify({ error: 'API endpoint not found' }));
@@ -377,6 +478,8 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`📚 RAG memory system ready for document processing`);
   console.log(`📨 Agent-to-agent communication system active`);
   console.log(`🎭 Multi-agent discussions enabled`);
+  console.log(`🔍 Veritas Sync Memory system active`);
+  console.log(`✅ Truth verification and cross-platform sync ready`);
   
   // Initialize additional systems
   initializePythonRAG();
