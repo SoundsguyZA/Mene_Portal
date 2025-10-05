@@ -1,0 +1,8 @@
+<!-- Placeholder for 96x96 PNG icon -->
+<!-- In production, replace with actual PNG file -->
+<!-- This SVG can be converted to PNG using online tools or build process -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
+  <rect width="96" height="96" rx="12" fill="#1F2937"/>
+  <circle cx="48" cy="48" r="32" fill="#3B82F6"/>
+  <text x="48" y="52" text-anchor="middle" fill="#FFFFFF" font-family="Arial" font-size="12" font-weight="bold">MENE</text>
+</svg>
