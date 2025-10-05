@@ -1,0 +1,26 @@
+# Python Requirements for Optional Services
+# Install with: pip install -r requirements.txt
+
+# Browser Automation (Solly Bridge)
+playwright==1.42.0
+fastapi==0.110.0
+uvicorn==0.27.1
+
+# CogniVault RAG
+streamlit==1.31.1
+sentence-transformers==2.5.1
+scikit-learn==1.4.1.post1
+numpy==1.26.4
+
+# Audio Processing
+whisper==1.1.10
+pydub==0.25.1
+
+# Document Processing
+PyPDF2==3.0.1
+python-docx==1.1.0
+pillow==10.2.0
+
+# Utilities
+python-dotenv==1.0.1
+requests==2.31.0

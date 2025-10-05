@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.egg-info/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Data & Logs
+data/
+backend/logs/
+*.log
+*.sqlite
+*.db
+
+# System
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Build
+dist/
+build/
+*.tar.gz
+*.zip
+
+# Temp
+temp/
+tmp/
+*.tmp
+backend/temp_cogni/

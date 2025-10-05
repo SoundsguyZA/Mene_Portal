@@ -1,70 +1,192 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>MenaPortal</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            font-family: sans-serif;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-        }
-        #chats, #agents {
-            flex: 1;
-            overflow: auto;
-            padding: 10px;
-        }
-        #chats {
-            background: #111;
-            color: #eee;
-            border-bottom: 2px solid #444;
-        }
-        #agents {
-            background: #222;
-            color: #ccc;
-        }
-        textarea {
-            width: 100%;
-            height: 60px;
-        }
-        button {
-            padding: 8px 12px;
-            margin-top: 6px;
-            background: #333;
-            color: white;
-            border: none;
-        }
-    </style>
+    <title>MENE Portal - Multi-LLM Sandbox</title>
+
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Multi-LLM Sandbox Progressive Web App for running multiple AI agents">
+    <meta name="theme-color" content="#1f2937">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MENE Portal">
+
+    <!-- PWA Links -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192x192.png">
+    <link rel="apple-touch-icon" href="assets/icons/icon-192x192.png">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/styles.css">
+
+    <!-- Preload Service Worker -->
+    <link rel="preload" href="sw.js" as="script">
 </head>
 <body>
-    <div id="chats">
-        <h2>Chats</h2>
-        <div id="chatOutput"></div>
-        <textarea id="chatInput" placeholder="Type here..."></textarea>
-        <button onclick="sendToAgents()">Send to Agents</button>
+    <!-- App Container -->
+    <div id="app" class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <h1 class="app-title">
+                    <span class="app-icon">🤖</span>
+                    MENE Portal
+                </h1>
+                <div class="header-actions">
+                    <button id="installBtn" class="install-btn hidden">
+                        <span class="btn-icon">📱</span>
+                        Install App
+                    </button>
+                    <div class="connection-status" id="connectionStatus">
+                        <span class="status-dot online"></span>
+                        <span class="status-text">Online</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h2>AI Agents</h2>
+                    <button id="createAgentBtn" class="create-agent-btn">
+                        <span class="btn-icon">+</span>
+                        New Agent
+                    </button>
+                </div>
+
+                <div class="agent-list" id="agentList">
+                    <!-- Agents will be populated here -->
+                </div>
+
+                <div class="sidebar-footer">
+                    <div class="stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Active Agents:</span>
+                            <span class="stat-value" id="activeAgents">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Total Messages:</span>
+                            <span class="stat-value" id="totalMessages">0</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Chat Area -->
+            <section class="chat-area">
+                <div class="chat-header">
+                    <div class="current-agent" id="currentAgent">
+                        <div class="agent-avatar">🤖</div>
+                        <div class="agent-info">
+                            <h3 class="agent-name">Select an Agent</h3>
+                            <p class="agent-service">Choose an AI service to start</p>
+                        </div>
+                    </div>
+                    <div class="chat-actions">
+                        <button id="clearChatBtn" class="action-btn" title="Clear Chat">
+                            <span class="btn-icon">🗑️</span>
+                        </button>
+                        <button id="exportChatBtn" class="action-btn" title="Export Chat">
+                            <span class="btn-icon">📤</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="chat-messages" id="chatMessages">
+                    <div class="welcome-message">
+                        <div class="welcome-icon">🚀</div>
+                        <h2>Welcome to MENE Portal</h2>
+                        <p>Create your first AI agent to start chatting with multiple LLMs simultaneously.</p>
+                        <button class="welcome-btn" onclick="document.getElementById('createAgentBtn').click()">
+                            Create First Agent
+                        </button>
+                    </div>
+                </div>
+
+                <div class="chat-input-container">
+                    <div class="chat-input-wrapper">
+                        <textarea 
+                            id="chatInput" 
+                            placeholder="Type your message here..." 
+                            rows="1"
+                            disabled
+                        ></textarea>
+                        <div class="input-actions">
+                            <button id="sendBtn" class="send-btn" disabled>
+                                <span class="btn-icon">➤</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="inter-agent-controls">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="broadcastMode">
+                            <span class="checkmark"></span>
+                            Broadcast to all agents
+                        </label>
+                        <select id="targetAgent" class="target-select" style="display: none;">
+                            <option value="">Select target agent...</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Agent Creation Modal -->
+        <div id="agentModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Create New Agent</h3>
+                    <button class="modal-close" id="closeModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="agentName">Agent Name</label>
+                        <input type="text" id="agentName" placeholder="Enter agent name...">
+                    </div>
+                    <div class="form-group">
+                        <label for="agentService">AI Service</label>
+                        <select id="agentService">
+                            <option value="">Select AI Service</option>
+                            <option value="chatgpt">ChatGPT</option>
+                            <option value="claude">Claude</option>
+                            <option value="zai">Z.ai</option>
+                            <option value="gemini">Gemini</option>
+                            <option value="custom">Custom Service</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="customUrlGroup" style="display: none;">
+                        <label for="customUrl">Service URL</label>
+                        <input type="url" id="customUrl" placeholder="https://...">
+                    </div>
+                    <div class="form-group">
+                        <label for="agentPersonality">Personality/Instructions</label>
+                        <textarea id="agentPersonality" rows="3" placeholder="Optional: Define the agent's personality or special instructions..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="cancelAgent" class="btn-secondary">Cancel</button>
+                    <button id="createAgent" class="btn-primary">Create Agent</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="loading-overlay hidden">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Initializing agent...</p>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div id="toastContainer" class="toast-container"></div>
     </div>
-    <div id="agents">
-        <h2>Agents</h2>
-        <div id="agentOutput"></div>
-    </div>
 
-    <script>
-        function sendToAgents() {
-            const input = document.getElementById("chatInput").value;
-            const chatBox = document.getElementById("chatOutput");
-            const agentBox = document.getElementById("agentOutput");
-
-            const userMsg = `<p><strong>You:</strong> ${input}</p>`;
-            chatBox.innerHTML += userMsg;
-            agentBox.innerHTML += `<p><em>Agent received:</em> ${input}</p>`;
-
-            document.getElementById("chatInput").value = "";
-        }
-    </script>
+    <!-- Scripts -->
+    <script src="js/app.js"></script>
+    <script src="js/agent-manager.js"></script>
+    <script src="js/pwa-utils.js"></script>
 </body>
 </html>
