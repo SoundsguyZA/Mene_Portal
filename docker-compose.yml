@@ -1,0 +1,106 @@
+# Mene Portal - Complete AI Bridge + RAG + Memory System
+# Production-ready Docker deployment
+version: '3.8'
+
+services:
+  # ChromaDB Vector Database
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: mene-chroma
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/chroma:/chroma/chroma
+    environment:
+      - CHROMA_DB_IMPL=duckdb+parquet
+      - CHROMA_PERSIST_DIRECTORY=/chroma/chroma
+    networks:
+      - mene-network
+    restart: unless-stopped
+
+  # Mene Portal Node.js Server
+  mene-portal:
+    build: .
+    container_name: mene-portal-server
+    depends_on:
+      - chroma
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/app
+      - /mnt/aidrive:/mnt/aidrive:ro  # Mount AI Drive read-only
+      - ./data/screenshots:/app/screenshots
+      - ./data/logs:/app/logs
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - CHROMA_URL=http://chroma:8000
+      - RAG_ENABLED=true
+      - MEMORY_ENABLED=true
+      - BROWSER_ENABLED=true
+    networks:
+      - mene-network
+    restart: unless-stopped
+
+  # Python RAG + Browser Service
+  mene-rag:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: mene-rag-service
+    depends_on:
+      - chroma
+    volumes:
+      - ./:/app
+      - /mnt/aidrive:/mnt/aidrive:ro
+      - ./data/processed:/app/processed
+      - ./data/memory:/app/memory
+    environment:
+      - CHROMA_URL=http://chroma:8000
+      - MEMORY_RETENTION=30d
+      - AUTO_PROCESS_DOCUMENTS=true
+      - BROWSER_HEADLESS=true
+    networks:
+      - mene-network
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: mene-nginx
+    depends_on:
+      - mene-portal
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/ssl/certs  # For SSL certificates
+    networks:
+      - mene-network
+    restart: unless-stopped
+
+  # Redis Cache (Optional)
+  redis:
+    image: redis:alpine
+    container_name: mene-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    networks:
+      - mene-network
+    restart: unless-stopped
+
+networks:
+  mene-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  chroma-data:
+  redis-data:
+  logs-data:
+  processed-data:

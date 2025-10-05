@@ -1,0 +1,8 @@
+<!-- Placeholder for 152x152 PNG icon -->
+<!-- In production, replace with actual PNG file -->
+<!-- This SVG can be converted to PNG using online tools or build process -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 152 152" width="152" height="152">
+  <rect width="152" height="152" rx="19" fill="#1F2937"/>
+  <circle cx="76" cy="76" r="50" fill="#3B82F6"/>
+  <text x="76" y="80" text-anchor="middle" fill="#FFFFFF" font-family="Arial" font-size="19" font-weight="bold">MENE</text>
+</svg>
