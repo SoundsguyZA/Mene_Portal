@@ -1,0 +1,374 @@
+// Mene' Portal - Ultimate AI Chat/Tool/Multi-Agent Platform
+// Prisma Schema for Multi-Agent Collaboration System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USER MANAGEMENT
+// ============================================================================
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  avatar        String?
+  preferences   Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  agents        Agent[]
+  conversations Conversation[]
+  memories      Memory[]
+  knowledgeItems KnowledgeItem[]
+  mcpServers    McpServer[]
+  messages      Message[]
+
+  @@map("users")
+}
+
+// ============================================================================
+// AGENT SYSTEM - User-Imported Personas (Blank Slate)
+// ============================================================================
+
+model Agent {
+  id              String   @id @default(cuid())
+  userId          String
+  
+  // Core Identity (User-defined)
+  name            String
+  description     String?
+  avatar          String?  // Emoji or image URL
+  color           String?  // Theme color for UI
+  
+  // TavernAI / Character Card Format Support
+  personaJson     Json?    // Full TavernAI character card JSON
+  systemPrompt    String?  // Custom system prompt
+  
+  // Optional Configuration
+  config          Json?    // LLM config, temperature, model, etc.
+  
+  // Status
+  isActive        Boolean  @default(true)
+  lastUsed        DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sentMessages    Message[]      @relation("SentMessages")
+  receivedMessages Message[]     @relation("ReceivedMessages")
+  conversations   Conversation[] @relation("AgentConversations")
+  communicationsAsFrom AgentCommunication[] @relation("CommunicationsFrom")
+  communicationsAsTo   AgentCommunication[] @relation("CommunicationsTo")
+  memories        Memory[]
+  toolBindings    AgentToolBinding[]
+
+  @@map("agents")
+}
+
+// ============================================================================
+// MCP SERVERS - Model Context Protocol Plugins (Plugged.in Style)
+// ============================================================================
+
+model McpServer {
+  id              String   @id @default(cuid())
+  userId          String
+  
+  // Server Identification
+  name            String
+  description     String?
+  
+  // Connection Type (stdio, streamable_http, sse)
+  type            String   @default("stdio")
+  
+  // For stdio type
+  command         String?  // e.g., "npx", "node", "python"
+  args            Json?    // Array of arguments
+  
+  // For http types
+  url             String?  // HTTP endpoint
+  
+  // Environment variables
+  env             Json?    // Environment variables
+  
+  // Capabilities
+  tools           Json?    // List of available tools
+  resources       Json?    // List of available resources
+  
+  // Status
+  isEnabled       Boolean  @default(true)
+  isConnected     Boolean  @default(false)
+  lastConnected   DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("mcp_servers")
+}
+
+// ============================================================================
+// TOOLS - Available Tools from MCP Servers
+// ============================================================================
+
+model Tool {
+  id              String   @id @default(cuid())
+  mcpServerId     String?
+  
+  name            String   @unique
+  description     String
+  category        String?  // web_search, memory, file_ops, etc.
+  
+  // JSON Schema for tool inputs
+  inputSchema     Json?
+  
+  // Tool configuration
+  config          Json?
+  
+  isEnabled       Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  agentBindings   AgentToolBinding[]
+
+  @@map("tools")
+}
+
+// Agent-Tool Bindings (Which tools each agent can use)
+model AgentToolBinding {
+  id              String   @id @default(cuid())
+  agentId         String
+  toolId          String
+  isEnabled       Boolean  @default(true)
+  config          Json?    // Agent-specific tool config
+  createdAt       DateTime @default(now())
+
+  // Relations
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  tool            Tool     @relation(fields: [toolId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, toolId])
+  @@map("agent_tool_bindings")
+}
+
+// ============================================================================
+// CONVERSATIONS - Chat Sessions
+// ============================================================================
+
+model Conversation {
+  id              String   @id @default(cuid())
+  userId          String
+  agentId         String?  // Primary agent for this conversation
+  title           String?
+  type            String   @default("chat") // chat, discussion, project
+  context         Json?    // Conversation context, metadata
+  isActive        Boolean  @default(true)
+  isArchived      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  primaryAgent    Agent?   @relation("AgentConversations", fields: [agentId], references: [id])
+  messages        Message[]
+  participants    ConversationParticipant[]
+
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id              String   @id @default(cuid())
+  conversationId  String
+  agentId         String
+  role            String   @default("participant") // host, participant, observer
+  joinedAt        DateTime @default(now())
+
+  // Relations
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, agentId])
+  @@map("conversation_participants")
+}
+
+// ============================================================================
+// MESSAGES - Chat Messages with Agent Support
+// ============================================================================
+
+model Message {
+  id              String   @id @default(cuid())
+  conversationId  String
+  userId          String?
+  senderAgentId   String?
+  recipientAgentId String?
+  role            String   // user, assistant, agent, system
+  content         String
+  tokens          Int?
+  metadata        Json?    // Additional metadata, citations, tool calls, etc.
+  parentMessageId String?  // For threaded conversations
+  createdAt       DateTime @default(now())
+
+  // Relations
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user            User?        @relation(fields: [userId], references: [id])
+  senderAgent     Agent?       @relation("SentMessages", fields: [senderAgentId], references: [id])
+  recipientAgent  Agent?       @relation("ReceivedMessages", fields: [recipientAgentId], references: [id])
+
+  @@map("messages")
+}
+
+// ============================================================================
+// AGENT COMMUNICATIONS - Agent-to-Agent Messages
+// ============================================================================
+
+model AgentCommunication {
+  id              String   @id @default(cuid())
+  fromAgentId     String
+  toAgentId       String
+  conversationId  String?  // Optional link to conversation
+  message         String
+  response        String?
+  context         Json?    // Discussion context, metadata
+  type            String   @default("direct") // direct, broadcast, discussion
+  status          String   @default("pending") // pending, delivered, read
+  createdAt       DateTime @default(now())
+  readAt          DateTime?
+
+  // Relations
+  fromAgent       Agent    @relation("CommunicationsFrom", fields: [fromAgentId], references: [id])
+  toAgent         Agent    @relation("CommunicationsTo", fields: [toAgentId], references: [id])
+
+  @@map("agent_communications")
+}
+
+// ============================================================================
+// MEMORY SYSTEM - Persistent Agent Memory
+// ============================================================================
+
+model Memory {
+  id              String   @id @default(cuid())
+  userId          String
+  agentId         String?
+  type            String   // semantic, episodic, procedural, conversation
+  content         String
+  embedding       String?  // Vector embedding (stored as JSON string)
+  metadata        Json?    // Source, timestamp, context
+  importance      Float    @default(0.5) // 0-1 importance score
+  accessCount     Int      @default(0)
+  lastAccessed    DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent           Agent?   @relation(fields: [agentId], references: [id])
+
+  @@map("memories")
+}
+
+// ============================================================================
+// KNOWLEDGE BASE - Document & Media Indexing (CogniVault)
+// ============================================================================
+
+model KnowledgeItem {
+  id              String   @id @default(cuid())
+  userId          String
+  type            String   // document, whatsapp, audio, image, video, code
+  title           String?
+  content         String
+  summary         String?
+  embedding       String?  // Vector embedding
+  source          String?  // File path or URL
+  metadata        Json?    // File info, processing status
+  tags            Json?    // Array of tags
+  isProcessed     Boolean  @default(false)
+  isIndexed       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("knowledge_items")
+}
+
+// ============================================================================
+// DISCUSSIONS - Multi-Agent Project Discussions
+// ============================================================================
+
+model Discussion {
+  id              String   @id @default(cuid())
+  title           String
+  topic           String
+  moderatorAgentId String?
+  status          String   @default("active") // active, completed, archived
+  summary         String?
+  conclusions     Json?    // Key findings, decisions
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  completedAt     DateTime?
+
+  // Relations
+  participants    DiscussionParticipant[]
+  exchanges       DiscussionExchange[]
+
+  @@map("discussions")
+}
+
+model DiscussionParticipant {
+  id              String   @id @default(cuid())
+  discussionId    String
+  agentId         String
+  role            String   @default("participant") // moderator, participant, observer
+  joinedAt        DateTime @default(now())
+
+  // Relations
+  discussion      Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+
+  @@unique([discussionId, agentId])
+  @@map("discussion_participants")
+}
+
+model DiscussionExchange {
+  id              String   @id @default(cuid())
+  discussionId    String
+  fromAgentId     String
+  toAgentId       String?
+  message         String
+  response        String?
+  phase           String?  // initial, round_1, round_2, summary
+  round           Int      @default(1)
+  createdAt       DateTime @default(now())
+
+  // Relations
+  discussion      Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+
+  @@map("discussion_exchanges")
+}
+
+// ============================================================================
+// SETTINGS - User & System Settings
+// ============================================================================
+
+model Setting {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  value           Json
+  category        String?  // system, user, agent, service, mcp
+  description     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("settings")
+}
