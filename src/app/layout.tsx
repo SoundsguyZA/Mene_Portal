@@ -14,16 +14,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NEXUS - Ultimate AI Collaboration Platform",
-  description: "Multi-agent AI chat platform with memory, knowledge vault, and service integration. Collaborate with AI agents like never before.",
-  keywords: ["AI", "Multi-Agent", "Chat", "Knowledge", "Memory", "Collaboration", "NEXUS"],
-  authors: [{ name: "NEXUS Team" }],
+  title: "Mene' Portal - Multi-Agent AI Platform",
+  description: "Multi-agent AI collaboration platform. Import your own agents, use MCP tools, and access memory systems. Blank slate approach - bring your own AI personas.",
+  keywords: ["AI", "Multi-Agent", "Chat", "Knowledge", "Memory", "Collaboration", "Mene Portal", "MCP"],
+  authors: [{ name: "Mene' Portal Team" }],
   icons: {
     icon: "/logo.svg",
   },
   openGraph: {
-    title: "NEXUS - Ultimate AI Collaboration Platform",
-    description: "Multi-agent AI chat platform with memory and knowledge systems",
+    title: "Mene' Portal - Multi-Agent AI Platform",
+    description: "Multi-agent AI collaboration with memory and MCP tool integration",
     type: "website",
   },
 };

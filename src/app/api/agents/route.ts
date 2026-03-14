@@ -177,8 +177,8 @@ export async function PUT(request: NextRequest) {
         personaJson: updatedPersona,
         config: {
           ...((existingAgent.config as Record<string, unknown>) || {}),
-          tools: tools ?? ((existingAgent.config as Record<string, unknown>)?.tools as string[]) || [],
-          memoryEnabled: memoryEnabled ?? ((existingAgent.config as Record<string, unknown>)?.memoryEnabled as boolean) ?? true
+          tools: (tools ?? ((existingAgent.config as Record<string, unknown>)?.tools as string[])) || [],
+          memoryEnabled: (memoryEnabled ?? ((existingAgent.config as Record<string, unknown>)?.memoryEnabled as boolean)) ?? true
         },
         isActive: isActive ?? existingAgent.isActive
       }

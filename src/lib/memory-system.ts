@@ -377,3 +377,315 @@ export async function createMemoryFromConversation(
     metadata: { conversationId, messageCount: messages.length }
   });
 }
+
+// ============================================================================
+// WhatsApp Export Processing
+// ============================================================================
+
+interface WhatsAppMessage {
+  date: string;
+  time: string;
+  sender: string;
+  content: string;
+  isMedia: boolean;
+  mediaType?: 'image' | 'video' | 'audio' | 'document';
+  mediaName?: string;
+}
+
+interface WhatsAppExport {
+  chatName: string;
+  participants: string[];
+  messages: WhatsAppMessage[];
+  exportedAt: string;
+}
+
+// Parse WhatsApp export file
+export function parseWhatsAppExport(content: string): WhatsAppExport {
+  const lines = content.split('\n');
+  const messages: WhatsAppMessage[] = [];
+  const participants = new Set<string>();
+  let chatName = 'WhatsApp Chat';
+
+  // WhatsApp message pattern: [DD/MM/YYYY, HH:MM:SS] Sender: Message
+  const messagePattern = /^\[(\d{2}\/\d{2}\/\d{4}),\s+(\d{2}:\d{2}:\d{2})\]\s+([^:]+):\s+(.*)$/;
+  // Alternative pattern: DD/MM/YYYY, HH:MM:SS - Sender: Message
+  const altPattern = /^(\d{2}\/\d{2}\/\d{4}),\s+(\d{2}:\d{2})\s+-\s+([^:]+):\s+(.*)$/;
+  // Media message pattern
+  const mediaPattern = /<attached:\s*([^>]+)>|(\S+\.(jpg|jpeg|png|gif|mp4|mp3|pdf|doc|ogg|opus))/i;
+
+  for (const line of lines) {
+    const match = line.match(messagePattern) || line.match(altPattern);
+    
+    if (match) {
+      const [, date, time, sender, content] = match;
+      participants.add(sender.trim());
+
+      const isMedia = mediaPattern.test(content);
+      let mediaType: WhatsAppMessage['mediaType'] = undefined;
+      let mediaName: string | undefined = undefined;
+
+      if (isMedia) {
+        const mediaMatch = content.match(mediaPattern);
+        if (mediaMatch) {
+          mediaName = mediaMatch[1] || mediaMatch[2];
+          const ext = mediaName.split('.').pop()?.toLowerCase();
+          
+          if (['jpg', 'jpeg', 'png', 'gif'].includes(ext || '')) {
+            mediaType = 'image';
+          } else if (['mp4', 'mov', 'avi'].includes(ext || '')) {
+            mediaType = 'video';
+          } else if (['mp3', 'ogg', 'opus', 'm4a'].includes(ext || '')) {
+            mediaType = 'audio';
+          } else {
+            mediaType = 'document';
+          }
+        }
+      }
+
+      messages.push({
+        date,
+        time,
+        sender: sender.trim(),
+        content: content.trim(),
+        isMedia,
+        mediaType,
+        mediaName
+      });
+    } else if (line.includes('created group') || line.includes('changed subject')) {
+      // Extract chat name from group creation message
+      const nameMatch = line.match(/(?:created group|changed subject to)["']?\s*"?([^"']+)"/i);
+      if (nameMatch) {
+        chatName = nameMatch[1].trim();
+      }
+    }
+  }
+
+  return {
+    chatName,
+    participants: Array.from(participants),
+    messages,
+    exportedAt: new Date().toISOString()
+  };
+}
+
+// Import WhatsApp chat to knowledge base
+export async function importWhatsAppChat(
+  userId: string,
+  content: string,
+  options: { source?: string; processMedia?: boolean } = {}
+): Promise<{
+  success: boolean;
+  chatName?: string;
+  messageCount?: number;
+  knowledgeItemId?: string;
+  error?: string;
+}> {
+  try {
+    const exportData = parseWhatsAppExport(content);
+    
+    // Format for knowledge base
+    const formattedContent = `WhatsApp Chat: ${exportData.chatName}
+Participants: ${exportData.participants.join(', ')}
+Messages: ${exportData.messages.length}
+
+${exportData.messages.map(m => {
+  const mediaInfo = m.isMedia ? ` [${m.mediaType}: ${m.mediaName}]` : '';
+  return `[${m.date} ${m.time}] ${m.sender}:${mediaInfo} ${m.content}`;
+}).join('\n')}`;
+
+    // Store in knowledge base
+    const item = await addKnowledgeItem(userId, 'whatsapp', formattedContent, {
+      title: `WhatsApp: ${exportData.chatName}`,
+      source: options.source || 'WhatsApp Export',
+      tags: ['whatsapp', 'chat', ...exportData.participants.map(p => p.toLowerCase().replace(/\s+/g, '_'))]
+    });
+
+    // Process asynchronously
+    processKnowledgeItem(item.id).catch(err => 
+      console.error('Failed to process WhatsApp chat:', err)
+    );
+
+    return {
+      success: true,
+      chatName: exportData.chatName,
+      messageCount: exportData.messages.length,
+      knowledgeItemId: item.id
+    };
+  } catch (error) {
+    console.error('Error importing WhatsApp chat:', error);
+    return { success: false, error: String(error) };
+  }
+}
+
+// ============================================================================
+// Document Processing
+// ============================================================================
+
+// Process and chunk document content
+export function chunkDocument(
+  content: string,
+  options: {
+    maxChunkSize?: number;
+    overlap?: number;
+    respectParagraphs?: boolean;
+  } = {}
+): string[] {
+  const { maxChunkSize = 1000, overlap = 100, respectParagraphs = true } = options;
+  const chunks: string[] = [];
+
+  if (respectParagraphs) {
+    const paragraphs = content.split(/\n\n+/);
+    let currentChunk = '';
+
+    for (const paragraph of paragraphs) {
+      if (currentChunk.length + paragraph.length + 2 > maxChunkSize) {
+        if (currentChunk.length > 0) {
+          chunks.push(currentChunk.trim());
+          // Keep some overlap
+          currentChunk = currentChunk.slice(-overlap) + '\n\n' + paragraph;
+        } else {
+          // Single paragraph is too long, split by sentences
+          const sentences = paragraph.match(/[^.!?]+[.!?]+/g) || [paragraph];
+          for (const sentence of sentences) {
+            if (currentChunk.length + sentence.length > maxChunkSize) {
+              if (currentChunk.length > 0) {
+                chunks.push(currentChunk.trim());
+              }
+              currentChunk = sentence;
+            } else {
+              currentChunk += sentence;
+            }
+          }
+        }
+      } else {
+        currentChunk += (currentChunk ? '\n\n' : '') + paragraph;
+      }
+    }
+
+    if (currentChunk.trim()) {
+      chunks.push(currentChunk.trim());
+    }
+  } else {
+    // Simple character-based chunking
+    for (let i = 0; i < content.length; i += maxChunkSize - overlap) {
+      chunks.push(content.slice(i, i + maxChunkSize));
+    }
+  }
+
+  return chunks;
+}
+
+// Import document to knowledge base
+export async function importDocument(
+  userId: string,
+  content: string,
+  options: {
+    title?: string;
+    source?: string;
+    type?: 'document' | 'code';
+    language?: string;
+    chunkContent?: boolean;
+  } = {}
+): Promise<{
+  success: boolean;
+  knowledgeItemId?: string;
+  chunkIds?: string[];
+  error?: string;
+}> {
+  try {
+    const { chunkContent = content.length > 5000 } = options;
+
+    if (chunkContent && content.length > 5000) {
+      // Chunk large documents
+      const chunks = chunkDocument(content);
+      const chunkIds: string[] = [];
+
+      // Store main document metadata
+      const mainItem = await addKnowledgeItem(userId, options.type || 'document', content.slice(0, 2000), {
+        title: options.title,
+        source: options.source,
+        tags: ['document', 'chunked', `chunks:${chunks.length}`]
+      });
+      chunkIds.push(mainItem.id);
+
+      // Store chunks
+      for (let i = 0; i < chunks.length; i++) {
+        const chunkItem = await addKnowledgeItem(userId, options.type || 'document', chunks[i], {
+          title: `${options.title || 'Document'} - Part ${i + 1}`,
+          source: options.source,
+          tags: ['document', 'chunk', `parent:${mainItem.id}`]
+        });
+        chunkIds.push(chunkItem.id);
+      }
+
+      // Process main item
+      processKnowledgeItem(mainItem.id).catch(err => 
+        console.error('Failed to process document:', err)
+      );
+
+      return { success: true, knowledgeItemId: mainItem.id, chunkIds };
+    } else {
+      // Store single document
+      const item = await addKnowledgeItem(userId, options.type || 'document', content, {
+        title: options.title,
+        source: options.source,
+        tags: options.language ? ['document', options.language] : ['document']
+      });
+
+      // Process asynchronously
+      processKnowledgeItem(item.id).catch(err => 
+        console.error('Failed to process document:', err)
+      );
+
+      return { success: true, knowledgeItemId: item.id };
+    }
+  } catch (error) {
+    console.error('Error importing document:', error);
+    return { success: false, error: String(error) };
+  }
+}
+
+// ============================================================================
+// Knowledge Context for Agents
+// ============================================================================
+
+// Get relevant knowledge context for agent queries
+export async function getKnowledgeContext(
+  userId: string,
+  query: string,
+  options: {
+    maxItems?: number;
+    maxContentLength?: number;
+    types?: string[];
+  } = {}
+): Promise<string> {
+  const { maxItems = 5, maxContentLength = 4000 } = options;
+
+  const memories = await retrieveMemories(userId, query, { limit: 3 });
+  const knowledgeItems = await searchKnowledge(userId, query, { limit: maxItems });
+
+  let context = '## Relevant Context\n\n';
+
+  if (memories.length > 0) {
+    context += '### Memories\n';
+    for (const memory of memories.slice(0, 2)) {
+      context += `- ${memory.content.slice(0, 200)}\n`;
+    }
+    context += '\n';
+  }
+
+  if (knowledgeItems.length > 0) {
+    context += '### Knowledge Base\n';
+    for (const item of knowledgeItems) {
+      const content = item.summary || item.content;
+      context += `**${item.title || 'Item'}**: ${content.slice(0, 300)}\n\n`;
+    }
+  }
+
+  // Truncate if too long
+  if (context.length > maxContentLength) {
+    context = context.slice(0, maxContentLength) + '\n... (truncated)';
+  }
+
+  return context;
+}

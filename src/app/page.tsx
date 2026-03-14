@@ -11,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Progress } from '@/components/ui/progress';
 import {
   Dialog,
   DialogContent,
@@ -30,6 +31,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
+import { useAgentSocket } from '@/hooks/use-agent-socket';
 import { 
   MessageSquare, 
   Bot, 
@@ -60,7 +62,15 @@ import {
   Info,
   Check,
   AlertCircle,
-  Sparkles
+  Sparkles,
+  FileText,
+  Folder,
+  Wifi,
+  WifiOff,
+  Users,
+  MessageCircle,
+  File,
+  Layers
 } from 'lucide-react';
 
 // Types
@@ -116,6 +126,18 @@ interface Conversation {
   agentId?: string;
 }
 
+interface KnowledgeItem {
+  id: string;
+  type: string;
+  title: string | null;
+  content: string;
+  summary: string | null;
+  source: string | null;
+  tags: string[];
+  isProcessed: boolean;
+  createdAt: string;
+}
+
 export default function MenePortal() {
   // State
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -145,6 +167,43 @@ export default function MenePortal() {
   const [newAgentDescription, setNewAgentDescription] = useState('');
   const [newAgentFirstMessage, setNewAgentFirstMessage] = useState('');
   const [newAgentColor, setNewAgentColor] = useState('#6366F1');
+  
+  // Knowledge Vault states
+  const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([]);
+  const [knowledgeStats, setKnowledgeStats] = useState({ total: 0, byType: {}, processed: 0 });
+  const [knowledgeSearch, setKnowledgeSearch] = useState('');
+  const [documentUploadOpen, setDocumentUploadOpen] = useState(false);
+  const [whatsappImportOpen, setWhatsappImportOpen] = useState(false);
+  const [documentContent, setDocumentContent] = useState('');
+  const [documentTitle, setDocumentTitle] = useState('');
+  const [whatsappContent, setWhatsappContent] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  
+  // WebSocket connection for real-time features
+  const {
+    isConnected: wsConnected,
+    onlineAgents,
+    activeDiscussions,
+    typingAgents,
+    sendMessage: wsSendMessage,
+    startDiscussion,
+    setTyping
+  } = useAgentSocket({
+    userId: 'default-user',
+    agents: agents.map(a => ({ id: a.id, name: a.name, avatar: a.avatar, color: a.color })),
+    onMessage: (msg) => {
+      if (msg.type !== 'system') {
+        setMessages(prev => [...prev, {
+          id: msg.id,
+          role: 'assistant',
+          content: `[${msg.fromAgentName}]: ${msg.content}`,
+          createdAt: new Date().toISOString(),
+          agentId: msg.fromAgentId,
+          agentName: msg.fromAgentName
+        }]);
+      }
+    }
+  });
 
   // Fetch all data on mount
   useEffect(() => {
@@ -152,20 +211,26 @@ export default function MenePortal() {
     
     const fetchData = async () => {
       try {
-        const [agentsRes, servicesRes, mcpRes] = await Promise.all([
+        const [agentsRes, servicesRes, mcpRes, knowledgeRes, statsRes] = await Promise.all([
           fetch('/api/agents?userId=default-user'),
           fetch('/api/services?userId=default-user'),
-          fetch('/api/mcp?userId=default-user')
+          fetch('/api/mcp?userId=default-user'),
+          fetch('/api/knowledge?userId=default-user'),
+          fetch('/api/knowledge?userId=default-user&action=stats')
         ]);
         
         const agentsData = await agentsRes.json();
         const servicesData = await servicesRes.json();
         const mcpData = await mcpRes.json().catch(() => ({ servers: [] }));
+        const knowledgeData = await knowledgeRes.json();
+        const statsData = await statsRes.json();
         
         if (mounted) {
           setAgents(agentsData.agents || []);
           setServices(servicesData.services || []);
           setMcpServers(mcpData.servers || []);
+          setKnowledgeItems(knowledgeData.items || []);
+          setKnowledgeStats(statsData.stats || { total: 0, byType: {}, processed: 0 });
         }
       } catch (error) {
         console.error('Failed to fetch data:', error);
@@ -176,6 +241,94 @@ export default function MenePortal() {
     
     return () => { mounted = false; };
   }, []);
+  
+  // Import document to knowledge vault
+  const importDocument = async () => {
+    if (!documentContent.trim()) {
+      toast.error('Document content is required');
+      return;
+    }
+    
+    setIsUploading(true);
+    try {
+      const res = await fetch('/api/knowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add',
+          userId: 'default-user',
+          type: 'document',
+          content: documentContent,
+          title: documentTitle || 'Untitled Document'
+        })
+      });
+      
+      const data = await res.json();
+      if (data.item) {
+        setKnowledgeItems(prev => [data.item, ...prev]);
+        setDocumentContent('');
+        setDocumentTitle('');
+        setDocumentUploadOpen(false);
+        toast.success('Document imported successfully');
+        // Refresh stats
+        const statsRes = await fetch('/api/knowledge?userId=default-user&action=stats');
+        const statsData = await statsRes.json();
+        setKnowledgeStats(statsData.stats || knowledgeStats);
+      }
+    } catch (error) {
+      toast.error('Failed to import document');
+    }
+    setIsUploading(false);
+  };
+  
+  // Import WhatsApp chat
+  const importWhatsApp = async () => {
+    if (!whatsappContent.trim()) {
+      toast.error('WhatsApp chat content is required');
+      return;
+    }
+    
+    setIsUploading(true);
+    try {
+      const res = await fetch('/api/knowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add',
+          userId: 'default-user',
+          type: 'whatsapp',
+          content: whatsappContent,
+          title: 'WhatsApp Chat Import'
+        })
+      });
+      
+      const data = await res.json();
+      if (data.item) {
+        setKnowledgeItems(prev => [data.item, ...prev]);
+        setWhatsappContent('');
+        setWhatsappImportOpen(false);
+        toast.success('WhatsApp chat imported successfully');
+        const statsRes = await fetch('/api/knowledge?userId=default-user&action=stats');
+        const statsData = await statsRes.json();
+        setKnowledgeStats(statsData.stats || knowledgeStats);
+      }
+    } catch (error) {
+      toast.error('Failed to import WhatsApp chat');
+    }
+    setIsUploading(false);
+  };
+  
+  // Search knowledge
+  const searchKnowledge = async () => {
+    if (!knowledgeSearch.trim()) return;
+    try {
+      const res = await fetch(`/api/knowledge?userId=default-user&action=search&query=${encodeURIComponent(knowledgeSearch)}`);
+      const data = await res.json();
+      setKnowledgeItems(data.items || []);
+    } catch (error) {
+      toast.error('Search failed');
+    }
+  };
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -421,6 +574,24 @@ export default function MenePortal() {
           </div>
           
           <div className="flex items-center gap-2">
+            {/* WebSocket Connection Status */}
+            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs ${
+              wsConnected 
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                : 'bg-red-500/20 text-red-400 border border-red-500/30'
+            }`}>
+              {wsConnected ? (
+                <>
+                  <Wifi className="h-3 w-3" />
+                  <span className="hidden sm:inline">Connected</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="h-3 w-3" />
+                  <span className="hidden sm:inline">Offline</span>
+                </>
+              )}
+            </div>
             {activeAgent && (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/50 border border-slate-700">
                 <span className="text-lg">{activeAgent.avatar || '🤖'}</span>
@@ -984,59 +1155,233 @@ export default function MenePortal() {
               </div>
             </TabsContent>
 
-            {/* Memory Tab */}
+            {/* Knowledge Vault Tab */}
             <TabsContent value="memory" className="flex-1 p-4 m-0 data-[state=inactive]:hidden overflow-auto">
               <div className="max-w-6xl mx-auto">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h2 className="text-2xl font-bold">Memory & Knowledge</h2>
-                    <p className="text-slate-400">Agent memories and knowledge storage</p>
+                    <h2 className="text-2xl font-bold flex items-center gap-2">
+                      <Database className="h-6 w-6 text-amber-400" />
+                      Knowledge Vault
+                    </h2>
+                    <p className="text-slate-400">Document storage, WhatsApp imports, and intelligent retrieval</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setWhatsappImportOpen(true)}>
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      Import WhatsApp
+                    </Button>
+                    <Button className="bg-amber-600 hover:bg-amber-700" onClick={() => setDocumentUploadOpen(true)}>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Add Document
+                    </Button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                {/* Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                   <Card className="bg-slate-800/50 border-slate-700">
-                    <CardContent className="p-6 text-center">
-                      <Brain className="h-8 w-8 mx-auto mb-2 text-amber-400" />
-                      <div className="text-2xl font-bold">0</div>
-                      <p className="text-sm text-slate-400">Memories</p>
+                    <CardContent className="p-4 text-center">
+                      <FileText className="h-6 w-6 mx-auto mb-2 text-amber-400" />
+                      <div className="text-2xl font-bold">{knowledgeStats.total}</div>
+                      <p className="text-xs text-slate-400">Total Items</p>
                     </CardContent>
                   </Card>
                   <Card className="bg-slate-800/50 border-slate-700">
-                    <CardContent className="p-6 text-center">
-                      <Bot className="h-8 w-8 mx-auto mb-2 text-emerald-400" />
+                    <CardContent className="p-4 text-center">
+                      <Brain className="h-6 w-6 mx-auto mb-2 text-emerald-400" />
+                      <div className="text-2xl font-bold">{knowledgeStats.processed}</div>
+                      <p className="text-xs text-slate-400">Processed</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-slate-800/50 border-slate-700">
+                    <CardContent className="p-4 text-center">
+                      <MessageCircle className="h-6 w-6 mx-auto mb-2 text-purple-400" />
+                      <div className="text-2xl font-bold">{(knowledgeStats.byType as Record<string, number>)?.whatsapp || 0}</div>
+                      <p className="text-xs text-slate-400">WhatsApp</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-slate-800/50 border-slate-700">
+                    <CardContent className="p-4 text-center">
+                      <Bot className="h-6 w-6 mx-auto mb-2 text-blue-400" />
                       <div className="text-2xl font-bold">{agents.length}</div>
-                      <p className="text-sm text-slate-400">Agents</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-slate-800/50 border-slate-700">
-                    <CardContent className="p-6 text-center">
-                      <MessageSquare className="h-8 w-8 mx-auto mb-2 text-purple-400" />
-                      <div className="text-2xl font-bold">{messages.length}</div>
-                      <p className="text-sm text-slate-400">Messages</p>
+                      <p className="text-xs text-slate-400">Agents</p>
                     </CardContent>
                   </Card>
                 </div>
 
-                <Card className="bg-slate-800/50 border-slate-700">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Search className="h-5 w-5" />
-                      Search Memory
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
+                {/* Search */}
+                <Card className="bg-slate-800/50 border-slate-700 mb-6">
+                  <CardContent className="p-4">
                     <div className="flex gap-2">
-                      <Input placeholder="Search agent memories..." className="bg-slate-900 border-slate-700" />
-                      <Button className="bg-amber-600 hover:bg-amber-700">Search</Button>
+                      <Input 
+                        placeholder="Search knowledge vault..." 
+                        className="bg-slate-900 border-slate-700"
+                        value={knowledgeSearch}
+                        onChange={(e) => setKnowledgeSearch(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && searchKnowledge()}
+                      />
+                      <Button className="bg-amber-600 hover:bg-amber-700" onClick={searchKnowledge}>
+                        <Search className="h-4 w-4" />
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* Knowledge Items */}
+                <div className="space-y-3">
+                  {knowledgeItems.length === 0 ? (
+                    <Card className="bg-slate-800/50 border-slate-700">
+                      <CardContent className="p-8 text-center">
+                        <Layers className="h-12 w-12 mx-auto mb-4 text-slate-600" />
+                        <p className="text-slate-400 mb-2">No knowledge items yet</p>
+                        <p className="text-xs text-slate-500">Import documents or WhatsApp chats to get started</p>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    knowledgeItems.slice(0, 10).map(item => (
+                      <Card key={item.id} className="bg-slate-800/50 border-slate-700">
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {item.type === 'whatsapp' ? (
+                                <MessageCircle className="h-4 w-4 text-green-400" />
+                              ) : item.type === 'code' ? (
+                                <File className="h-4 w-4 text-blue-400" />
+                              ) : (
+                                <FileText className="h-4 w-4 text-amber-400" />
+                              )}
+                              <CardTitle className="text-sm">{item.title || 'Untitled'}</CardTitle>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {item.isProcessed && (
+                                <Badge variant="outline" className="text-[10px] text-green-400 border-green-400/30">
+                                  Processed
+                                </Badge>
+                              )}
+                              <Badge variant="outline" className="text-[10px]">
+                                {item.type}
+                              </Badge>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          {item.summary && (
+                            <p className="text-xs text-slate-400 mb-2 line-clamp-2">{item.summary}</p>
+                          )}
+                          {item.tags && item.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {item.tags.slice(0, 5).map((tag, i) => (
+                                <Badge key={i} variant="secondary" className="text-[10px]">
+                                  {tag}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                          <p className="text-[10px] text-slate-500 mt-2">
+                            {new Date(item.createdAt).toLocaleDateString()}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                </div>
               </div>
             </TabsContent>
           </Tabs>
         </main>
       </div>
+
+      {/* Document Upload Dialog */}
+      <Dialog open={documentUploadOpen} onOpenChange={setDocumentUploadOpen}>
+        <DialogContent className="bg-slate-900 border-slate-700">
+          <DialogHeader>
+            <DialogTitle>Import Document</DialogTitle>
+            <DialogDescription>
+              Add documents to your knowledge vault for intelligent retrieval
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Title (optional)</Label>
+              <Input
+                value={documentTitle}
+                onChange={(e) => setDocumentTitle(e.target.value)}
+                placeholder="Document title..."
+                className="bg-slate-800 border-slate-700"
+              />
+            </div>
+            <div>
+              <Label>Content *</Label>
+              <Textarea
+                value={documentContent}
+                onChange={(e) => setDocumentContent(e.target.value)}
+                placeholder="Paste your document content here..."
+                className="min-h-[200px] bg-slate-800 border-slate-700"
+              />
+            </div>
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription className="text-xs">
+                Documents are automatically summarized and tagged for easy retrieval
+              </AlertDescription>
+            </Alert>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDocumentUploadOpen(false)}>Cancel</Button>
+            <Button 
+              onClick={importDocument} 
+              disabled={!documentContent.trim() || isUploading}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              {isUploading ? 'Importing...' : 'Import Document'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* WhatsApp Import Dialog */}
+      <Dialog open={whatsappImportOpen} onOpenChange={setWhatsappImportOpen}>
+        <DialogContent className="bg-slate-900 border-slate-700">
+          <DialogHeader>
+            <DialogTitle>Import WhatsApp Chat</DialogTitle>
+            <DialogDescription>
+              Paste your WhatsApp chat export to add to your knowledge vault
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Chat Export *</Label>
+              <Textarea
+                value={whatsappContent}
+                onChange={(e) => setWhatsappContent(e.target.value)}
+                placeholder="Paste your WhatsApp chat export here...
+
+Format example:
+[01/01/2024, 12:00:00] John: Hello!
+[01/01/2024, 12:01:00] Jane: Hi there!"
+                className="min-h-[200px] bg-slate-800 border-slate-700 font-mono text-xs"
+              />
+            </div>
+            <Alert>
+              <MessageCircle className="h-4 w-4" />
+              <AlertDescription className="text-xs">
+                Supports WhatsApp chat export format with dates, times, and senders
+              </AlertDescription>
+            </Alert>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWhatsappImportOpen(false)}>Cancel</Button>
+            <Button 
+              onClick={importWhatsApp} 
+              disabled={!whatsappContent.trim() || isUploading}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isUploading ? 'Importing...' : 'Import Chat'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* MCP Configuration Dialog */}
       <Dialog open={mcpDialogOpen} onOpenChange={setMcpDialogOpen}>
